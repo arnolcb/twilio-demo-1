@@ -1,150 +1,62 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const http = require("http");
+const { Server } = require("socket.io");
 const { AccessToken } = require("twilio").jwt;
 const { VideoGrant } = AccessToken;
 
 const app = express();
-const port = process.env.PORT || 3000;
+const server = http.createServer(app);
+const io = new Server(server);
 
-// Almacenamiento en memoria para salas y señalización
-// En producción usarías una base de datos
-const rooms = new Map();
-const iceQueue = new Map();
+const port = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.static("public"));
 app.use(express.json());
 
-// Ruta para verificar si una sala existe
-app.get("/check-room", (req, res) => {
-  const roomId = req.query.roomId;
-  const exists = rooms.has(roomId);
-  res.json({ exists });
-});
+// Manejo de señalización con Socket.IO
+io.on("connection", (socket) => {
+  console.log("Usuario conectado:", socket.id);
 
-// Ruta para crear una sala con oferta SDP
-app.post("/create-room", (req, res) => {
-  try {
-    const { roomId, offer } = req.body;
-    
-    if (!roomId || !offer) {
-      return res.status(400).json({ error: "Se requiere roomId y offer" });
-    }
-    
-    // Guardar la oferta para la sala
-    rooms.set(roomId, { 
-      offer,
-      answer: null,
-      created: new Date()
+  // Unirse a una sala
+  socket.on("join-room", (roomId, userId) => {
+    socket.join(roomId);
+    // Notificar a otros en la sala
+    socket.to(roomId).emit("user-connected", userId);
+
+    console.log(`Usuario ${userId} se unió a la sala ${roomId}`);
+
+    // Cuando el usuario se desconecta
+    socket.on("disconnect", () => {
+      socket.to(roomId).emit("user-disconnected", userId);
+      console.log(`Usuario ${userId} se desconectó de la sala ${roomId}`);
     });
-    
-    // Inicializar la cola de candidatos ICE para esta sala
-    iceQueue.set(roomId, []);
-    
-    console.log(`Sala creada: ${roomId}`);
-    res.status(201).json({ success: true });
-    
-  } catch (err) {
-    console.error("Error al crear sala:", err);
-    res.status(500).json({ error: "Error interno del servidor" });
-  }
-});
+  });
 
-// Ruta para obtener la oferta de una sala
-app.get("/get-offer", (req, res) => {
-  const roomId = req.query.roomId;
-  
-  if (!roomId || !rooms.has(roomId)) {
-    return res.status(404).json({ error: "Sala no encontrada" });
-  }
-  
-  const room = rooms.get(roomId);
-  res.json({ offer: room.offer });
-});
+  // Reenviar la oferta SDP
+  socket.on("offer", (roomId, offer) => {
+    socket.to(roomId).emit("receive-offer", offer);
+    console.log(`Oferta enviada en la sala ${roomId}`);
+  });
 
-// Ruta para enviar una respuesta a una oferta
-app.post("/submit-answer", (req, res) => {
-  try {
-    const { roomId, answer } = req.body;
-    
-    if (!roomId || !answer || !rooms.has(roomId)) {
-      return res.status(400).json({ error: "Datos inválidos o sala no encontrada" });
-    }
-    
-    // Guardar la respuesta
-    const room = rooms.get(roomId);
-    room.answer = answer;
-    rooms.set(roomId, room);
-    
-    console.log(`Respuesta recibida para sala: ${roomId}`);
-    res.json({ success: true });
-    
-  } catch (err) {
-    console.error("Error al guardar respuesta:", err);
-    res.status(500).json({ error: "Error interno del servidor" });
-  }
-});
+  // Reenviar la respuesta SDP
+  socket.on("answer", (roomId, answer) => {
+    socket.to(roomId).emit("receive-answer", answer);
+    console.log(`Respuesta enviada en la sala ${roomId}`);
+  });
 
-// Ruta para obtener la respuesta de una sala
-app.get("/get-answer", (req, res) => {
-  const roomId = req.query.roomId;
-  
-  if (!roomId || !rooms.has(roomId)) {
-    return res.status(404).json({ error: "Sala no encontrada" });
-  }
-  
-  const room = rooms.get(roomId);
-  
-  if (!room.answer) {
-    return res.status(404).json({ error: "Aún no hay respuesta", exists: true });
-  }
-  
-  res.json({ answer: room.answer });
-});
-
-// Ruta para enviar candidatos ICE
-app.post("/ice-candidate", (req, res) => {
-  try {
-    const { roomId, candidate } = req.body;
-    
-    if (!roomId || !candidate || !iceQueue.has(roomId)) {
-      return res.status(400).json({ error: "Datos inválidos o sala no encontrada" });
-    }
-    
-    // Añadir candidato a la cola
-    const candidates = iceQueue.get(roomId);
-    candidates.push(candidate);
-    iceQueue.set(roomId, candidates);
-    
-    res.json({ success: true });
-    
-  } catch (err) {
-    console.error("Error al guardar candidato ICE:", err);
-    res.status(500).json({ error: "Error interno del servidor" });
-  }
-});
-
-// Ruta para obtener candidatos ICE
-app.get("/ice-candidates", (req, res) => {
-  const roomId = req.query.roomId;
-  
-  if (!roomId || !iceQueue.has(roomId)) {
-    return res.status(404).json({ error: "Sala no encontrada" });
-  }
-  
-  const candidates = iceQueue.get(roomId);
-  
-  // Limpiar la cola después de enviarla
-  iceQueue.set(roomId, []);
-  
-  res.json({ candidates });
+  // Reenviar candidatos ICE
+  socket.on("ice-candidate", (roomId, candidate) => {
+    socket.to(roomId).emit("receive-ice-candidate", candidate);
+  });
 });
 
 // Ruta para obtener token de Twilio
 app.get("/token", (req, res) => {
   try {
-    const identity = req.query.identity || "usuario_anónimo";
+    const identity = req.query.identity || "usuario_" + Math.floor(Math.random() * 1000);
     
     // Verificar variables de entorno
     if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_API_KEY || !process.env.TWILIO_API_SECRET) {
@@ -174,20 +86,6 @@ app.get("/token", (req, res) => {
   }
 });
 
-// Limpieza periódica de salas antiguas
-setInterval(() => {
-  const now = new Date();
-  rooms.forEach((room, roomId) => {
-    const roomAge = now - room.created;
-    // Eliminar salas más antiguas que 2 horas
-    if (roomAge > 2 * 60 * 60 * 1000) {
-      rooms.delete(roomId);
-      iceQueue.delete(roomId);
-      console.log(`Sala eliminada por inactividad: ${roomId}`);
-    }
-  });
-}, 30 * 60 * 1000); // Ejecutar cada 30 minutos
-
-app.listen(port, () => {
+server.listen(port, () => {
   console.log(`Servidor ejecutándose en http://localhost:${port}`);
 });

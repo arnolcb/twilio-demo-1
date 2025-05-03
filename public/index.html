@@ -43,6 +43,21 @@
       border-radius: 4px;
       background-color: #f0f0f0;
     }
+    #roomControls {
+      margin-top: 20px;
+      padding: 15px;
+      background-color: #f9f9f9;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+    }
+    #roomId {
+      padding: 8px;
+      margin-right: 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      flex-grow: 1;
+    }
     h1, h2 {
       color: #333;
     }
@@ -53,23 +68,28 @@
   
   <div id="connectionStatus">Estado: Desconectado</div>
   
+  <div id="roomControls">
+    <input type="text" id="roomId" placeholder="ID de la sala (ejemplo: sala123)">
+    <button id="joinRoomBtn">Unirse a la sala</button>
+  </div>
+  
   <div class="video-container">
     <div class="video-box">
       <h2>Local</h2>
-      <video id="local" autoplay muted playsinline></video>
+      <video id="localVideo" autoplay muted playsinline></video>
     </div>
     <div class="video-box">
       <h2>Remoto</h2>
-      <video id="remote" autoplay playsinline></video>
+      <video id="remoteVideo" autoplay playsinline></video>
     </div>
   </div>
   
   <div class="controls">
-    <button id="toggleVideo">Pausar Video</button>
-    <button id="toggleAudio">Silenciar Audio</button>
-    <button id="startCall">Iniciar Llamada</button>
+    <button id="toggleVideoBtn">Pausar Video</button>
+    <button id="toggleAudioBtn">Silenciar Audio</button>
   </div>
   
+  <script src="/socket.io/socket.io.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
