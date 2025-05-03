@@ -1,0 +1,20 @@
+# Ignorar la carpeta de dependencias de Node.js
+node_modules/
+
+# Ignorar el archivo de variables de entorno local
+.env
+
+# Archivos de log
+*.log
+
+# Posibles archivos de configuración de IDEs (opcional, puedes añadir más según tu IDE)
+.vscode/
+.idea/
+
+# Archivos de build o compilación (si applies)
+dist/
+build/
+
+# Archivos del sistema operativo
+.DS_Store
+Thumbs.db
